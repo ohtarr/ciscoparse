@@ -14,4 +14,3 @@ $cp->input_data($SHVER,"version");
 $cp->input_data($SHINV,"inventory");
 //$cp->update();  This is ran automatically when you input_data.
 print_r($cp->output);
-
