@@ -41,6 +41,7 @@ class CiscoParse
 		"lldp"			=>	"",
 		"interfaces"	=>	"",
 		"stp"			=>	"",
+		"switchport"	=>	"",
 	];
 	//public $interfaces = [];
 	public $output = [];
@@ -60,23 +61,21 @@ class CiscoParse
 		if(array_key_exists($cmdtype,$this->input))
 		{
 			$this->input[$cmdtype] = $data;
+			$this->update();
 		}
 	}
 
 	public function update()
 	{
-		if(!$this->os)
+		if($this->input['version'])
 		{
-			if($this->input['version'])
+			$this->os = $this->parse_version_to_os();
+			if(!$this->os)
 			{
-				$this->os = $this->parse_version_to_os();
-				if(!$this->os)
-				{
-					exit("Unable to determine OS type!");
-				}
-			} else {
-				exit("Unable to determine OS type!");
+				//exit("Unable to determine OS type!");
 			}
+		} else {
+			//exit("Unable to determine OS type!");
 		}
 
 		if($this->os == "ios")
@@ -94,12 +93,16 @@ class CiscoParse
 		if($this->os == "nxos")
 		{
 			require_once("cisco_nxos_parse.php");
+			$parser = new \ohtarr\CisconxosParse();
 		}
 	
 		if($this->os == "iosxr")
 		{
 			//require_once("cisco_iosxr_parse.php");
 		}
+		
+		if($this->os)
+		{
 			$parser->input_data($this->input['run'],"run");
 			$parser->input_data($this->input['version'],"version");
 			$parser->input_data($this->input['inventory'],"inventory");
@@ -107,8 +110,10 @@ class CiscoParse
 			$parser->input_data($this->input['lldp'],"lldp");
 			$parser->input_data($this->input['interfaces'],"interfaces");
 			$parser->input_data($this->input['stp'],"stp");
-			$parser->update();
+			$parser->input_data($this->input['switchport'],"switchport");
+			//$parser->update();
 			$this->output = $parser->output;
+		}
 	}
 	
 	public function parse_version_to_os()

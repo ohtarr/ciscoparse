@@ -30,8 +30,6 @@ namespace ohtarr;
 
 class CiscoIosParse
 {
-	//public $NM_DEVICES = json_decode();
-
 	public $input = [
 		"run" 			=>	"",
 		"version" 		=>	"",
@@ -40,9 +38,14 @@ class CiscoIosParse
 		"lldp"			=>	"",
 		"interfaces"	=>	"",
 		"stp"			=>	"",
+		"switchport"	=>	"",
 	];
 	//public $interfaces = [];
-	public $output = [];
+	public $output = [
+		'system' 		=>	[],
+		'ips'			=>	[],
+		'interfaces'	=>	[],
+	];
 
 	public function __construct()
 	{
@@ -59,12 +62,17 @@ class CiscoIosParse
 		if(array_key_exists($cmdtype,$this->input))
 		{
 			$this->input[$cmdtype] = $data;
+			$this->update();
 		}
 	}
 
 	public function update()
 	{
-		$this->output = array();
+		$this->output = [
+			'system' 		=>	[],
+			'ips'			=>	[],
+			'interfaces'	=>	[],
+		];
 		if($this->input['run'])
 		{
 			$this->output['system']['hostname'] = $this->parse_run_to_hostname();
@@ -72,10 +80,13 @@ class CiscoIosParse
 			$this->output['system']['domain'] = $this->parse_run_to_domain();
 			$this->output['system']['nameservers'] = $this->parse_run_to_name_servers();
 			$this->output['ips'] = $this->parse_run_to_ips();
-			$this->output['interfaces'] = $this->parse_run_to_interfaces();
+			$this->output['interfaces'] = $this->parse_run_to_interfaces($this->input['run']);
+			//$this->output['interfaces'] = array_merge_recursive($this->output['interfaces'],$this->parse_run_to_interfaces($this->input['run']));
 			$this->output['system']['mgmt'] = $this->parse_run_to_mgmt_interface();
 			$this->output['system']['vrfs'] = $this->parse_run_to_vrfs();
 			$this->output['system']['ntp'] = $this->parse_run_to_ntp();
+			$this->output['dnsnames'] = $this->generate_dns_names();
+			$this->output['system']['snmp']['location'] = $this->parse_run_to_snmp_location();
 		}
 
 		if($this->input['version'])
@@ -96,14 +107,16 @@ class CiscoIosParse
 			$this->output['system']['serial'] = $this->parse_inventory_to_serial();
 		}
 
-		if($this->input['cdp'])
+		if($this->input['lldp'])
 		{
+			$this->output['neighbors']['lldp'] = $this->parse_lldp_to_neighbors();
 			
 		}
 
-		if($this->input['lldp'])
+		if($this->input['cdp'])
 		{
-			
+			$this->output['neighbors']['cdp'] = $this->parse_cdp_to_neighbors();
+		
 		}
 
 		if($this->input['interfaces'])
@@ -111,11 +124,16 @@ class CiscoIosParse
 			
 		}
 
+		if($this->input['switchport'])
+		{
+			$this->output['interfaces'] = array_replace_recursive($this->output['interfaces'],$this->parse_switchport_to_interfaces());
+		}
+
 		if($this->input['stp'])
 		{
 			
 		}
-
+		$this->merge_neighbors();
 	}
 
 /*
@@ -181,7 +199,7 @@ class CiscoIosParse
 		}
 	}
 /**/
-	function netmask2cidr($netmask)
+	public static function netmask2cidr($netmask)
 	{
 		$bits = 0;
 		$netmask = explode(".", $netmask);
@@ -191,7 +209,7 @@ class CiscoIosParse
 		return $bits;
 	}
 
-	function cidr2network($ip, $cidr)
+	public static function cidr2network($ip, $cidr)
 	{
 		$network = long2ip((ip2long($ip)) & ((-1 << (32 - (int)$cidr))));
 		return $network;
@@ -283,6 +301,23 @@ class CiscoIosParse
 	public function parse_run_to_aaa()
 	{
 	
+	}
+	
+	public function parse_run_to_snmp_location()
+	{
+		if(preg_match("/snmp-server location (.*)/", $this->input['run'], $HITS1))
+		{
+			$return['string'] = $HITS1[1];
+			$array = json_decode($HITS1[1],true);
+			if(is_array($array))
+			{
+				foreach($array as $key => $value)
+				{
+					$return['json'][$key] = $value;
+				}
+			}
+		}
+		return $return;
 	}
 	
 	public function parse_run_to_ntp()
@@ -531,9 +566,133 @@ class CiscoIosParse
 	}
 /**/
 
-	function parse_run_to_interfaces()
+	public static function parse_interface_config($INTCFG)
 	{
-		$LINES = explode("\n", $this->input['run']); 
+		if(preg_match("/interface (\S+)/", $INTCFG, $HITS1))
+		{
+			$INTNAME = $HITS1[1];
+			$INTARRAY['name']= $HITS1[1];
+		}
+//		$INTLINES = explode("\n",$INTCFG);
+//		foreach($INTLINES as $INTLINE)
+//		{
+			if(preg_match("/^\s*shutdown$/m", $INTCFG, $HITS1))
+			{
+				$INTARRAY['shutdown'] = 1;
+			}
+			if(preg_match("/description (.*)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['description']['string'] = $HITS1[1];
+				$descarray = json_decode($HITS1[1],true);
+				if(is_array($descarray))
+				{
+					foreach($descarray as $key => $value)
+					{
+						$INTARRAY['description']['json'][$key] = $value;
+					}
+				}
+			}
+			if(preg_match("/[Ee]thernet/",$INTNAME) || preg_match("/[Pp]ort-channel/",$INTNAME))
+			{
+				if(preg_match("/switchport mode (.*)/", $INTCFG, $HITS1))
+				{
+					//print "match!\n";
+					$INTARRAY['switchport']['mode'] = $HITS1[1];
+				}
+				if(preg_match("/switchport trunk encapsulation (.*)/", $INTCFG, $HITS1))
+				{
+					//print "match!\n";
+					$INTARRAY['switchport']['encapsulation'] = $HITS1[1];
+				}
+				if(preg_match("/switchport trunk native vlan (\d+)/", $INTCFG, $HITS1))
+				{
+					$INTARRAY['switchport']['native_vlan'] = $HITS1[1];
+				}
+				if(preg_match("/switchport access vlan (\d+)/", $INTCFG, $HITS1))
+				{
+					$INTARRAY['switchport']['access_vlan'] = $HITS1[1];
+				}
+				if(preg_match("/switchport voice vlan (\d+)/", $INTCFG, $HITS1))
+				{
+					$INTARRAY['switchport']['voice_vlan'] = $HITS1[1];
+				}
+				//print "$INTCFG";
+				if(preg_match("/speed (\d+)/", $INTCFG, $HITS1))
+				{
+					$INTARRAY['speed'] = $HITS1[1];
+				}
+				if(preg_match("/^\s*duplex (\S+)$/m", $INTCFG, $HITS1))
+				{
+					print "DUPLEX: " . $HITS1[1];
+					$INTARRAY['duplex'] = $HITS1[1];
+				}
+			}
+			if(preg_match("/bandwidth (\d+)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['bandwidth'] = $HITS1[1];
+			}
+			if(preg_match("/vrf forwarding (\S+)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['vrf'] = $HITS1[1];
+			}
+			if(preg_match("/ip address (\d+.\d+.\d+.\d+) (\d+.\d+.\d+.\d+)( secondary|)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['ip'][$HITS1[1]]['mask'] = $HITS1[2];
+				$INTARRAY['ip'][$HITS1[1]]['cidr'] = self::netmask2cidr($HITS1[2]);
+				$INTARRAY['ip'][$HITS1[1]]['network'] = self::cidr2network($HITS1[1],self::netmask2cidr($HITS1[2]));
+				if($HITS1[3])
+				{
+					$INTARRAY['ip'][$HITS1[1]]['secondary'] = 1;
+				}
+			}
+			if(preg_match("/ip address (dhcp|negotiated)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['ip'][$HITS1[1]] = 1;
+			}
+			if(preg_match_all("/ip helper-address (\S+)/", $INTCFG, $HITS1))
+			{
+				foreach($HITS1[1] as $helper)
+				{
+					$INTARRAY['helper'][] = $helper;
+				}
+			}
+			if(preg_match("/standby version (\d)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['hsrp']['version'] = $HITS1[1];
+			}
+			if(preg_match_all("/standby (\d+) ip (\S+)/", $INTCFG, $HITS1))
+			{
+				foreach($HITS1[1] as $key => $group)
+				{
+					$INTARRAY['hsrp']['group'][$group]['ip'] = $HITS1[2][$key];
+				}
+			}
+			if(preg_match_all("/standby (\d+) priority (\d+)/", $INTCFG, $HITS1))
+			{
+				foreach($HITS1[1] as $key => $group)
+				{
+					$INTARRAY['hsrp']['group'][$group]['priority'] = $HITS1[2][$key];
+				}
+			}
+			if(preg_match("/ip mtu (\S+)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['ipmtu'] = $HITS1[1];
+			}
+			if(preg_match("/ip tcp adjust-mss (\S+)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['adjustmss'] = $HITS1[1];
+			}
+			if(preg_match("/service-policy output (\S+)/", $INTCFG, $HITS1))
+			{
+				$INTARRAY['service-policy'] = $HITS1[1];
+			}
+	//	}
+		return $INTARRAY;
+	}
+
+	public static function parse_run_to_raw_interfaces($run)
+	{
+		$LINES = explode("\n", $run); 
 		$INT = null;
 		foreach($LINES as $LINE)
 		{
@@ -547,123 +706,14 @@ class CiscoIosParse
 			{
 				if($INT)
 				{
-					$INTARRAY[$INT]['raw'] = $INTCFG;
-
-					$INTLINES = explode("\n",$INTCFG);
-					foreach($INTLINES as $INTLINE)
-					{
-						if(preg_match("/shutdown/m", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['shutdown'] = 1;
-						}
-						if(preg_match("/description (.*)/m", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['description'] = $HITS1[1];
-						}
-						if(preg_match("/Ethernet/",$INT) || preg_match("/Port-channel/",$INT))
-						{
-							if(!preg_match("/no switchport/m",$INTLINE))
-							{
-								if(preg_match("/switchport mode (\D+)$/m", $INTLINE, $HITS1))
-								{
-									//print "match!\n";
-									$INTARRAY[$INT]['switchport']['mode'] = $HITS1[1];
-								}
-								/*
-								if(!preg_match("/switchport mode (\D+)/m", $INTLINE, $HITS1))
-								{
-									//print "no match!\n";
-									$INTARRAY[$INT]['switchport']['mode'] = "dynamic";
-								}
-								/**/
-								if(preg_match("/switchport trunk native vlan (\d+)/m", $INTLINE, $HITS1))
-								{
-									$INTARRAY[$INT]['switchport']['native_vlan'] = $HITS1[1];
-								}
-								if(preg_match("/switchport access vlan (\d+)/m", $INTLINE, $HITS1))
-								{
-									$INTARRAY[$INT]['switchport']['access_vlan'] = $HITS1[1];
-								}
-								if(preg_match("/switchport voice vlan (\d+)/m", $INTLINE, $HITS1))
-								{
-									$INTARRAY[$INT]['switchport']['voice_vlan'] = $HITS1[1];
-								}
-							}
-							//print "$INTCFG";
-							if(preg_match("/speed (\S+)/", $INTLINE, $HITS1))
-							{
-								$INTARRAY[$INT]['speed'] = $HITS1[1];
-							}
-							if(preg_match("/duplex (\S+)/", $INTLINE, $HITS1))
-							{
-								$INTARRAY[$INT]['duplex'] = $HITS1[1];
-							}
-						}
-						if(preg_match("/bandwidth (\d+)/", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['bandwidth'] = $HITS1[1];
-						}
-						if(preg_match("/vrf forwarding (\S+)/", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['vrf'] = $HITS1[1];
-						}
-						if(preg_match("/ip address (\d+.\d+.\d+.\d+) (\d+.\d+.\d+.\d+)( secondary|)/", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['ip'][$HITS1[1]]['mask'] = $HITS1[2];
-							$INTARRAY[$INT]['ip'][$HITS1[1]]['cidr'] = $this->netmask2cidr($HITS1[2]);
-							$INTARRAY[$INT]['ip'][$HITS1[1]]['network'] = $this->cidr2network($HITS1[1],$this->netmask2cidr($HITS1[2]));
-							if($HITS1[3])
-							{
-								$INTARRAY[$INT]['ip'][$HITS1[1]]['secondary'] = 1;
-							}
-						}
-						if(preg_match("/ip address (dhcp|negotiated)/", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['ip'][$HITS1[1]] = 1;
-						}
-						if(preg_match_all("/ip helper-address (\S+)/m", $INTLINE, $HITS1))
-						{
-							foreach($HITS1[1] as $helper)
-							{
-								$INTARRAY[$INT]['helper'][] = $helper;
-							}
-						}
-						if(preg_match("/standby version (\d)/m", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['hsrp']['version'] = $HITS1[1];
-						}
-						if(preg_match_all("/standby (\d+) ip (\S+)/m", $INTLINE, $HITS1))
-						{
-							foreach($HITS1[1] as $key => $group)
-							{
-								$INTARRAY[$INT]['hsrp']['group'][$group]['ip'] = $HITS1[2][$key];
-							}
-						}
-						if(preg_match_all("/standby (\d+) priority (\d+)/m", $INTLINE, $HITS1))
-						{
-							foreach($HITS1[1] as $key => $group)
-							{
-								$INTARRAY[$INT]['hsrp']['group'][$group]['priority'] = $HITS1[2][$key];
-							}
-						}
-						if(preg_match("/ip mtu (\S+)/m", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['ipmtu'] = $HITS1[1];
-						}
-						if(preg_match("/ip tcp adjust-mss (\S+)/m", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['adjustmss'] = $HITS1[1];
-						}
-						if(preg_match("/service-policy output (\S+)/", $INTLINE, $HITS1))
-						{
-							$INTARRAY[$INT]['service-policy'] = $HITS1[1];
-						}
-					}
+					$tmparray[] = $INTCFG;
+					//$INTARRAY[$INT] = self::parse_interface_config($INT,$INTCFG);
 					$INTCFG = "";
 				}
 				if (preg_match("/^interface (\S+)/", $LINE, $HITS))
 				{
-					$INT = $HITS[1];
+					$INT = strtolower($HITS[1]);
+					$INTCFG .= $LINE . "\n";
 				} else {
 					$INT = null;
 				}
@@ -677,7 +727,21 @@ class CiscoIosParse
 				}
 			}
 		}
-		return $INTARRAY;
+		//return $INTARRAY;
+		return $tmparray;
+	}
+	
+	public static function parse_run_to_interfaces($run)
+	{
+		$interfaces = self::parse_run_to_raw_interfaces($run);
+		foreach($interfaces as $interface)
+		{
+			$tmp = self::parse_interface_config($interface);
+			$intname = strtolower($tmp['name']);
+			$array[$intname] = $tmp;
+			$array[$intname]['raw']= $interface;
+		}
+		return $array;
 	}
 
 	public function parse_run_to_mgmt_interface()
@@ -697,19 +761,16 @@ class CiscoIosParse
 		foreach($regs as $reg){
 			if (preg_match($reg, $this->input['run'], $HITS))
 			{
-				//print_r($HITS);
-				//$SOURCES[$HITS[1]] = $SOURCES[$HITS[1]]++;
 				$SOURCES[$HITS[1]]++;
 			}
 		}
 		array_multisort($SOURCES,SORT_DESC);
-		//print_r($SOURCES);
 		foreach($SOURCES as $SOURCE => $COUNT)
 		{
 			$return['interface'] = $SOURCE;
 			break;
 		}
-		foreach($this->interfaces[$SOURCE]['ip'] as $ip => $mask)
+		foreach($this->output['interfaces'][$SOURCE]['ip'] as $ip => $mask)
 		{
 			$return['ip'] = $ip;
 			break;
@@ -750,4 +811,308 @@ class CiscoIosParse
 			return $sn;
 		}
 	}
+
+	public function name_unabbreviate($name)
+	{
+		$shortcuts = [
+			"fa" 	=>	"fastethernet",
+			"gi" 	=>	"gigabitethernet",
+			"te" 	=>	"tengigabitethernet",
+			"lo" 	=>	"loopback",
+			"mu" 	=>	"multilink",
+			"ge"	=>	"gigabitethernet",
+			"fe"	=>	"fastethernet",
+		];
+
+		$name = strtolower($name);
+		//print $name . "\n";
+		foreach($shortcuts as $abbrev => $full)
+		{
+			$namereg = "/(" . $abbrev . ")(\d\S+|\d)/";
+			//print $namereg . "\n";
+			if(preg_match($namereg, $name, $hits))
+			{
+				//print_r($hits);
+				$newname = $full . $hits[2];
+				//print $newname . "\n";
+				return $newname;
+			}
+		}
+		return $name;
+	}
+	
+	public function name_abbreviate($name)
+	{
+		$shortcuts = [
+			"fa" 	=>	"fastethernet",
+			"gi" 	=>	"gigabitethernet",
+			"te" 	=>	"tengigabitethernet",
+			"lo" 	=>	"loopback",
+			"mu" 	=>	"multilink",
+			"ge"	=>	"gigabitethernet",
+			"fe"	=>	"fastethernet",
+		];
+
+		$name = strtolower($name);
+		//print $name . "\n";
+		foreach($shortcuts as $abbrev => $full)
+		{
+			$namereg = "/(" . $full . ")(\d\S+|\d)/";
+			//print $namereg . "\n";
+			if(preg_match($namereg, $name, $hits))
+			{
+				//print_r($hits);
+				$newname = $abbrev . $hits[2];
+				//print $newname . "\n";
+				return $newname;
+			}
+		}
+		return $name;
+	}
+
+	public function dns_name_converter($name)
+	{
+		$newname = $this->name_abbreviate($name);
+		$newname = str_replace("/","-",$newname);
+		$newname = str_replace(".","-",$newname);
+		return $newname;	
+	}
+	
+	public function generate_dns_names()
+	{
+		foreach($this->output['interfaces'] as $intname => $intcfg)
+		{
+			foreach($intcfg['ip'] as $ip => $ipcfg)
+			{
+				unset($tmparray);
+				if(!($ipcfg['secondary']))
+				{
+					$tmparray['name'] = strtolower($this->dns_name_converter($intname) . "." . $this->output['system']['hostname'] . "." . $this->output['system']['domain']);
+					$tmparray['type'] = "a";
+					$tmparray['value'] = $ip;
+					$dnsnames[] = $tmparray;
+					break;
+				}
+				//$tmparray = 
+			}
+
+		}
+
+		if($this->output['system']['hostname'])
+		{
+			$tmparray['name'] = strtolower($this->output['system']['hostname']) . "." . $this->output['system']['domain'];
+			$tmparray['type'] = "cname";
+			$tmparray['value'] = strtolower($this->dns_name_converter($this->output['system']['mgmt']['interface']) . "." . $this->output['system']['hostname'] . "." . $this->output['system']['domain']);
+			$dnsnames[] = $tmparray;
+		}
+		return $dnsnames;
+	}
+
+	public function parse_cdp_to_neighbors()
+	{
+		$cdpreg = "/Device ID:.*Management address\(es\):/sU";
+		if(preg_match_all($cdpreg,$this->input['cdp'],$hits,PREG_SET_ORDER))
+		{
+			//print_r($hits);
+			
+			foreach($hits as $hit)
+			{
+				$cdpdevice = $hit[0];
+
+				$reg = "/Device\s+ID:\s*(\S+)/";
+				if(preg_match($reg,$cdpdevice,$hits))
+				{
+					$namearray = explode(".",$hits[1]);
+					$devicename = strtoupper($namearray[0]);
+					$tmparray['name'] = $devicename;
+				}
+				$reg = "/Entry address\(es\):\s+IP\s+address:\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/";
+				if(preg_match($reg,$cdpdevice,$hits))
+				{
+					$tmparray['ip'] = $hits[1];
+				}
+				$reg = "/\s*Platform:\s+(.+),\s+Capabilities:/";
+				if(preg_match($reg,$cdpdevice,$hits))
+				{
+					$tmparray['model'] = $hits[1];
+				}
+				$reg = "/Interface:\s*(\S+),\s*Port ID\s*\(outgoing port\):\s*(\S+)/";	
+				if(preg_match($reg,$cdpdevice,$hits))
+				{
+					$tmparray['localint'] = $this->name_unabbreviate($hits[1]);
+					$tmparray['remoteint'] = $this->name_unabbreviate($hits[2]);
+				}
+				$reg = "/Version\s*:\s*\n(.*)advertisement\s+version:/s";
+				if(preg_match($reg,$cdpdevice,$hits))
+				{
+					//print_r($hits);
+					$tmparray['version'] = $hits[1];
+				}
+				$reg = "/Native\s+VLAN:\s*(\d+)/";
+				if(preg_match($reg,$cdpdevice,$hits))
+				{
+					$tmparray['nativevlan'] = $hits[1];
+				}
+				$reg = "/Duplex:\s*(\S+)/";
+				if(preg_match($reg,$cdpdevice,$hits))
+				{
+					$tmparray['duplex'] = $hits[1];
+				}
+				$neighbors[] = $tmparray;
+				unset($tmparray);
+			}
+		}
+		return $neighbors;
+	}
+	
+	public function parse_lldp_to_neighbors()
+	{
+		$lldpreg = "/Chassis id:.*Management Addresses:\s+IP:\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s/sU";
+		if(preg_match_all($lldpreg,$this->input['lldp'],$hits,PREG_SET_ORDER))
+		{
+			foreach($hits as $hit)
+			{
+				$lldpdevice = $hit[0];
+			
+				$reg = "/System\s+Name:\s+(\S+)/";
+				if(preg_match($reg,$lldpdevice,$hits))
+				{
+					$namearray = explode(".",$hits[1]);
+					$devicename = strtoupper($namearray[0]);
+					$tmparray['name'] = $devicename;
+				}
+				$reg = "/Chassis id:\s*(\S+)/";
+				if(preg_match($reg,$lldpdevice,$hits))
+				{
+					$tmparray['chassisid'] = $hits[1];
+				}
+				$reg = "/Port\s+id:\s+(\S+)/";
+				if(preg_match($reg,$lldpdevice,$hits))
+				{
+					//print_r($hits);
+					$tmparray['portid'] = $this->name_unabbreviate($hits[1]);
+				}
+				$reg = "/Port\s+Description:\s+(\S+)/";
+				if(preg_match($reg,$lldpdevice,$hits))
+				{
+					$tmparray['portdesc'] = $hits[1];
+				}
+				$reg = "/\s+IP:\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/";
+				if(preg_match($reg,$lldpdevice,$hits))
+				{
+					$tmparray['ip'] = $hits[1];
+				}
+				$reg = "/System Description:\s+\n(.*)\s+Time remaining/s";
+				if(preg_match($reg,$lldpdevice,$hits))
+				{
+					$tmparray['version'] = $hits[1];
+				}
+				$neighbors[] = $tmparray;
+				unset($tmparray);
+			}
+		}
+		return $neighbors;
+	}
+	
+	public function merge_neighbors()
+	{
+		foreach($this->output['neighbors']['lldp'] as $lldpneighbor)
+		{
+			$this->output['neighbors']['all'][$lldpneighbor['name']]['chassisid'] = $lldpneighbor['chassisid'];
+			$this->output['neighbors']['all'][$lldpneighbor['name']]['remoteint'] = $lldpneighbor['portid'];
+			$this->output['neighbors']['all'][$lldpneighbor['name']]['portdesc'] = $lldpneighbor['portdesc'];
+			$this->output['neighbors']['all'][$lldpneighbor['name']]['ip'] = $lldpneighbor['ip'];
+			$this->output['neighbors']['all'][$lldpneighbor['name']]['version'] = $lldpneighbor['version'];
+		}
+		foreach($this->output['neighbors']['cdp'] as $cdpneighbor)
+		{
+			$this->output['neighbors']['all'][$cdpneighbor['name']]['model'] = $cdpneighbor['model'];
+			$this->output['neighbors']['all'][$cdpneighbor['name']]['localint'] = $cdpneighbor['localint'];
+			$this->output['neighbors']['all'][$cdpneighbor['name']]['remoteint'] = $cdpneighbor['remoteint'];
+			$this->output['neighbors']['all'][$cdpneighbor['name']]['ip'] = $cdpneighbor['ip'];
+			$this->output['neighbors']['all'][$cdpneighbor['name']]['version'] = $cdpneighbor['version'];
+			$this->output['neighbors']['all'][$cdpneighbor['name']]['nativevlan'] = $cdpneighbor['nativevlan'];
+			$this->output['neighbors']['all'][$cdpneighbor['name']]['duplex'] = $cdpneighbor['duplex'];
+		}
+	}
+	
+	function parse_switchport_to_interfaces()
+	{
+		$LINES = explode("\n", $this->input['switchport']); 
+		$INT = null;
+		$NEWINT = null;
+		foreach($LINES as $LINE)
+		{
+			if ($LINE == "")
+			{
+				continue;
+			}
+			if(preg_match("/^Name: (\S+)/", $LINE, $HITS1))
+			{
+				$NEWINT = $HITS1[1];
+				if(!$INT)
+				{
+					$INT = $NEWINT;
+				}
+				continue;
+			}
+			if($INT != $NEWINT)
+			{
+				$array[$this->name_unabbreviate($INT)] = $TMPARRAY;
+				$TMPARRAY = null;
+				$INT = $NEWINT;
+			} elseif($INT) {
+				$TMPARRAY[] = $LINE;
+			}
+		}
+		
+		$array[$this->name_unabbreviate($INT)] = $TMPARRAY;
+		//print_r($array);
+
+		foreach ($array as $interface => $ifconfig)
+		{
+			$TMPARRAY=null;
+			foreach($ifconfig as $line)
+			{
+				if(preg_match("/Administrative Mode: (.+)/", $line, $HITS1))
+				{
+					$TMPARRAY['mode'] = $HITS1[1];
+				}
+				if(preg_match("/Operational Mode: (.+)/", $line, $HITS1))
+				{
+					$TMPARRAY['op_mode'] = $HITS1[1];
+				}
+				if(preg_match("/Administrative Trunking Encapsulation: (.+)/", $line, $HITS1))
+				{
+					$TMPARRAY['encapsulation'] = $HITS1[1];
+				}
+				if(preg_match("/Negotiation of Trunking: (.+)/", $line, $HITS1))
+				{
+					if($HITS1[1] == "On")
+					{
+						$TMPARRAY['negotiation'] = 1;
+					}
+				}
+				if(preg_match("/Access Mode VLAN: (\d+)/", $line, $HITS1))
+				{
+					$TMPARRAY['access_vlan'] = $HITS1[1];
+				}
+				if(preg_match("/Trunking Native Mode VLAN: (\d+)/", $line, $HITS1))
+				{
+					$TMPARRAY['native_vlan'] = $HITS1[1];
+				}
+				if(preg_match("/Voice VLAN: (\d+)/", $line, $HITS1))
+				{
+					$TMPARRAY['voice_vlan'] = $HITS1[1];
+				}
+				if(preg_match("/Trunking VLANs Enabled: ALL/", $line, $HITS1))
+				{
+					$TMPARRAY['all_vlans'] = 1;
+				}
+			}
+			$newarray[$interface]['switchport'] = $TMPARRAY;
+		}
+		return $newarray;
+	}
+	
 }

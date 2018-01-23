@@ -75,7 +75,7 @@ class CiscoNxosParse
 			$this->output['system']['vrfs'] = $this->parse_run_to_vrfs();
 			$this->output['system']['ntp'] = $this->parse_run_to_ntp();
 		}
-
+/*
 		if($this->input['version'])
 		{
 			$this->output['system']['hostname'] = $this->parse_version_to_hostname();
@@ -87,7 +87,7 @@ class CiscoNxosParse
 			$this->output['system']['license'] = $this->parse_version_to_license();
 			$this->output['system']['confreg'] = $this->parse_version_to_confreg();
 		}
-
+/**/
 		if($this->input['inventory'])
 		{
 			$this->output['system']['inventory'] = $this->parse_inventory();
@@ -134,27 +134,17 @@ class CiscoNxosParse
 
 	public function parse_run_to_usernames()
 	{
-		$reg1 = "/^username (\S+).*/m";
-		$reg2 = "/privilege (\d+)/m";
-		$reg3 = "/secret (\d+) (\S+)/m";
+		$reg1 = "/username\s+(\w+)\s+password\s+(\d+) (\S+)\s+role\s+(\S+)/";
 
 		//find all usernames lines
-		if(preg_match_all($reg1, $this->input['run'], $HITS))
+		if(preg_match_all($reg1, $this->input['run'], $HITS, PREG_SET_ORDER))
 		{
 			//print_r($HITS);
-			foreach($HITS[1] as $HKEY => $HIT)
+			foreach($HITS as $UKEY => $UPARAMS)
 			{
-				//find privilege level of each
-				if(preg_match_all($reg2, $HITS[0][$HKEY], $HITS2))
-				{
-					$usernames[$HITS[1][$HKEY]]['privilege'] = $HITS2[1][0];
-				}
-				if(preg_match_all($reg3, $HITS[0][$HKEY], $HITS3))
-				{
-					//print_r($HITS3);
-					$usernames[$HITS[1][$HKEY]]['encryption'] = $HITS3[1][0];
-					$usernames[$HITS[1][$HKEY]]['secret'] = $HITS3[2][0];					
-				}
+				$usernames[$UPARAMS[1]]['privilege'] = $UPARAMS[4];
+				$usernames[$UPARAMS[1]]['encryption'] = $UPARAMS[2];
+				$usernames[$UPARAMS[1]]['secret'] = $UPARAMS[3];
 			}
 		}
 		//print_r($usernames);
@@ -163,7 +153,7 @@ class CiscoNxosParse
 
 	public function parse_run_to_hostname()
 	{
-		$reg1 = "/^hostname (\S+)/m";
+		$reg1 = "/hostname (\w+)/";
 
 		//find hostname line
 		if(preg_match_all($reg1, $this->input['run'], $HITS))
@@ -176,12 +166,7 @@ class CiscoNxosParse
 	public function parse_run_to_domain()
 	{
 		$reg1 = "/^ip domain-name (\S+)/m";
-		$reg2 = "/^ip domain name (\S+)/m";
 		if(preg_match_all($reg1, $this->input['run'], $HITS))
-		{
-			$domain = $HITS[1][0];
-		}
-		if(preg_match_all($reg2, $this->input['run'], $HITS))
 		{
 			$domain = $HITS[1][0];
 		}
@@ -190,21 +175,28 @@ class CiscoNxosParse
 
 	public function parse_run_to_name_servers()
 	{
-		$reg1 = "/^ip name-server (\S+)/m";
+		$reg1 = "/ip name-server .+/";
+		$reg2 = "/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/";
 		if(preg_match_all($reg1, $this->input['run'], $HITS))
 		{
-			foreach($HITS[1] as $key => $server)
+			$array = explode(" ",$HITS[0][0]);
+			//print_r($array);
+			foreach($array as $item)
 			{
-				//print_r($HITS);
-				$servers[] = $server;
+				if(preg_match($reg2, $item, $HITS2))
+				{
+					//print_r($HITS2);
+					$servers[] = $HITS2[0];
+				}
 			}
+
 		}
 		return $servers;
 	}
 
 	public function parse_run_to_vrfs()
 	{
-		$reg = "/vrf definition (\S+)/";
+		$reg = "/vrf context (\S+)/";
 		if(preg_match_all($reg, $this->input['run'], $HITS, PREG_SET_ORDER))
 		{
 			foreach($HITS as $vrf)
@@ -222,19 +214,19 @@ class CiscoNxosParse
 	
 	public function parse_run_to_ntp()
 	{
-		$reg = "/ntp server (\S+)/";
-		$reg2 = "/ntp server vrf (\S+) (\S+)/";
-		$reg3 = "/ntp source (\S+)/";
+		$reg = "/ntp\s+server\s+(\S+)/m";
+		$reg2 = "/^ntp\s+server\s+(\S+)\s+use-vrf\s+(\S+)$/m";
+		$reg3 = "/^ntp\s+source-interface\s+(\S+)$/m";
 		if(preg_match_all($reg, $this->input['run'], $HITS, PREG_SET_ORDER))
 		{
-			//print_r($HITS);
+			print_r($HITS);
 			foreach($HITS as $ntp1)
 			{
 				$ntp['servers'][] = $ntp1[1];
 			}
 		} 
 		if (preg_match_all($reg2, $this->input['run'], $HITS2, PREG_SET_ORDER)) {
-			//print_r($HITS2);
+			print_r($HITS2);
 			foreach($HITS2 as $ntp2)
 			{
 				//$ntp[] = $ntp2[2];
@@ -242,7 +234,7 @@ class CiscoNxosParse
 			}
 		}
 		if (preg_match($reg3, $this->input['run'], $HITS3)) {
-			//print_r($HITS3);
+			print_r($HITS3);
 			$ntp['sourceint'] = $HITS3[1];
 		}
 		
