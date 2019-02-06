@@ -1,0 +1,28 @@
+{
+    "name": "ohtarr/ciscoparse",
+    "type": "library",
+    "description": "PHP7 library to parse cisco cli to php object",
+    "keywords": [
+        "php7",
+        "cisco"
+        ],
+    "homepage": "http://github.com/ohtarr/ciscoparse",
+    "authors": [
+        {
+            "name": "ohtarr",
+            "email": "composer@ohtarr.com",
+            "role": "Developer"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=7.0.3",
+    },
+    "require-dev": {
+    },
+    "autoload": {
+        "psr-4": {
+            "ohtarr\\": "src"
+        }
+    }
+}

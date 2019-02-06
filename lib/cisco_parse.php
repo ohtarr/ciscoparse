@@ -46,9 +46,16 @@ class CiscoParse
 	//public $interfaces = [];
 	public $output = [];
 
-	public function __construct()
+	public function __construct($array)
 	{
-
+		foreach($array as $key => $value)
+		{
+			if(array_key_exists($key,$this->input))
+			{
+				$this->input[$key] = $value;
+			}
+			$this->update();
+		}
 	}
 
 	public function __destruct()
@@ -81,19 +88,22 @@ class CiscoParse
 		if($this->os == "ios")
 		{
 			require_once("cisco_ios_parse.php");
-			$parser = new \ohtarr\CiscoIosParse();
+			$parser = new \ohtarr\CiscoIosParse($this->input);
+			return $parser;
 		}
 
 		if($this->os == "iosxe")
 		{
 			require_once("cisco_iosxe_parse.php");
-			$parser = new \ohtarr\CiscoIosxeParse();
+			$parser = new \ohtarr\CiscoIosxeParse($this->input);
+			return $parser;
 		}
 		
 		if($this->os == "nxos")
 		{
 			require_once("cisco_nxos_parse.php");
-			$parser = new \ohtarr\CisconxosParse();
+			$parser = new \ohtarr\CisconxosParse($this->input);
+			return $parser;
 		}
 	
 		if($this->os == "iosxr")
@@ -101,7 +111,7 @@ class CiscoParse
 			//require_once("cisco_iosxr_parse.php");
 		}
 		
-		if($this->os)
+		/* if($this->os)
 		{
 			$parser->input_data($this->input['run'],"run");
 			$parser->input_data($this->input['version'],"version");
@@ -113,7 +123,7 @@ class CiscoParse
 			$parser->input_data($this->input['switchport'],"switchport");
 			//$parser->update();
 			$this->output = $parser->output;
-		}
+		} */
 	}
 	
 	public function parse_version_to_os()
