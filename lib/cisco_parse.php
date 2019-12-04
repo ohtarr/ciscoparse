@@ -46,7 +46,7 @@ class CiscoParse
 	//public $interfaces = [];
 	public $output = [];
 
-	public function __construct($array)
+/* 	public function __construct($array)
 	{
 		foreach($array as $key => $value)
 		{
@@ -54,25 +54,51 @@ class CiscoParse
 			{
 				$this->input[$key] = $value;
 			}
-			$this->update();
+		}
+		$parser = $this->update();
+		return $parser;
+	} */
+
+	public static function create($array)
+	{
+		$os = self::parse_version_to_os2($array['version']);
+		if($os == "ios")
+		{
+			require_once("cisco_ios_parse.php");
+			$parser = new \ohtarr\CiscoIosParse($array);
+			return $parser;
+		}
+
+		if($os == "iosxe")
+		{
+			require_once("cisco_iosxe_parse.php");
+			$parser = new \ohtarr\CiscoIosxeParse($array);
+			return $parser;
+		}
+		
+		if($os == "nxos")
+		{
+			require_once("cisco_nxos_parse.php");
+			$parser = new \ohtarr\CisconxosParse($array);
+			return $parser;
+		}
+	
+		if($os == "iosxr")
+		{
+			//require_once("cisco_iosxr_parse.php");
 		}
 	}
 
-	public function __destruct()
-	{
-
-	}
-
-	public function input_data($data,$cmdtype)
+/* 	public function input_data($data,$cmdtype)
 	{
 		if(array_key_exists($cmdtype,$this->input))
 		{
 			$this->input[$cmdtype] = $data;
 			$this->update();
 		}
-	}
+	} */
 
-	public function update()
+/* 	public function update()
 	{
 		if($this->input['version'])
 		{
@@ -123,10 +149,10 @@ class CiscoParse
 			$parser->input_data($this->input['switchport'],"switchport");
 			//$parser->update();
 			$this->output = $parser->output;
-		} */
-	}
+		} 
+	} /**/
 	
-	public function parse_version_to_os()
+/* 	public function parse_version_to_os()
 	{
 		$reg1 = "/Cisco (IOS) Software/m";
 		if (preg_match($reg1, $this->input['version'], $HITS1))
@@ -148,6 +174,35 @@ class CiscoParse
 		
 		$reg4 = "/Cisco IOS XR Software/";
 		if (preg_match($reg4, $this->input['version'], $HITS4))
+		{
+			$os = "iosxr";
+		}
+		
+		return $os;
+	} */
+
+	public static function parse_version_to_os2($version)
+	{
+		$reg1 = "/Cisco (IOS) Software/m";
+		if (preg_match($reg1, $version, $HITS1))
+		{
+			$os = "ios";
+		}
+
+		$reg2 = "/Cisco (IOS XE) Software/m";
+		if (preg_match($reg2, $version, $HITS2))
+		{
+			$os = "iosxe";
+		}
+
+		$reg3 = "/Cisco Nexus Operating System \(NX-OS\) Software/";
+		if (preg_match($reg3, $version, $HITS3))
+		{
+			$os = "nxos";
+		}
+		
+		$reg4 = "/Cisco IOS XR Software/";
+		if (preg_match($reg4, $version, $HITS4))
 		{
 			$os = "iosxr";
 		}

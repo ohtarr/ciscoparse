@@ -47,9 +47,19 @@ class CiscoIosParse
 		'interfaces'	=>	[],
 	];
 
-	public function __construct()
+	public function __construct($array)
 	{
-
+		if(is_array($array))
+		{
+			foreach($array as $key => $value)
+			{
+				if(array_key_exists($key,$this->input))
+				{
+					$this->input[$key] = $value;
+				}
+				$this->update();
+			}
+		}
 	}
 
 	public function __destruct()
@@ -75,47 +85,47 @@ class CiscoIosParse
 		];
 		if($this->input['run'])
 		{
-			$this->output['system']['hostname'] = $this->parse_run_to_hostname();
-			$this->output['system']['usernames'] = $this->parse_run_to_usernames();
-			$this->output['system']['domain'] = $this->parse_run_to_domain();
-			$this->output['system']['nameservers'] = $this->parse_run_to_name_servers();
-			$this->output['ips'] = $this->parse_run_to_ips();
+			$this->output['system']['hostname'] = $this->parse_run_to_hostname($this->input['run']);
+			$this->output['system']['usernames'] = $this->parse_run_to_usernames($this->input['run']);
+			$this->output['system']['domain'] = $this->parse_run_to_domain($this->input['run']);
+			$this->output['system']['nameservers'] = $this->parse_run_to_name_servers($this->input['run']);
+			$this->output['ips'] = $this->parse_run_to_ips($this->input['run']);
 			$this->output['interfaces'] = $this->parse_run_to_interfaces($this->input['run']);
 			//$this->output['interfaces'] = array_merge_recursive($this->output['interfaces'],$this->parse_run_to_interfaces($this->input['run']));
-			$this->output['system']['mgmt'] = $this->parse_run_to_mgmt_interface();
-			$this->output['system']['vrfs'] = $this->parse_run_to_vrfs();
-			$this->output['system']['ntp'] = $this->parse_run_to_ntp();
+			$this->output['system']['mgmt'] = $this->parse_run_to_mgmt_interface($this->input['run']);
+			$this->output['system']['vrfs'] = $this->parse_run_to_vrfs($this->input['run']);
+			$this->output['system']['ntp'] = $this->parse_run_to_ntp($this->input['run']);
 			$this->output['dnsnames'] = $this->generate_dns_names();
-			$this->output['system']['snmp']['location'] = $this->parse_run_to_snmp_location();
+			$this->output['system']['snmp']['location'] = $this->parse_run_to_snmp_location($this->input['run']);
 		}
 
 		if($this->input['version'])
 		{
-			$this->output['system']['hostname'] = $this->parse_version_to_hostname();
-			$this->output['system']['uptime'] = $this->parse_version_to_uptime();
-			$this->output['system']['model'] = $this->parse_version_to_model();
-			$this->output['system']['os'] = $this->parse_version_to_ios();
-			$this->output['system']['ram'] = $this->parse_version_to_ram();
-			$this->output['system']['serial'] = $this->parse_version_to_serial();
-			$this->output['system']['license'] = $this->parse_version_to_license();
-			$this->output['system']['confreg'] = $this->parse_version_to_confreg();
+			$this->output['system']['hostname'] = $this->parse_version_to_hostname($this->input['version']);
+			$this->output['system']['uptime'] = $this->parse_version_to_uptime($this->input['version']);
+			$this->output['system']['model'] = $this->parse_version_to_model($this->input['version']);
+			$this->output['system']['os'] = $this->parse_version_to_ios($this->input['version']);
+			$this->output['system']['ram'] = $this->parse_version_to_ram($this->input['version']);
+			$this->output['system']['serial'] = $this->parse_version_to_serial($this->input['version']);
+			$this->output['system']['license'] = $this->parse_version_to_license($this->input['version']);
+			$this->output['system']['confreg'] = $this->parse_version_to_confreg($this->input['version']);
 		}
 
 		if($this->input['inventory'])
 		{
-			$this->output['system']['inventory'] = $this->parse_inventory();
-			$this->output['system']['serial'] = $this->parse_inventory_to_serial();
+			$this->output['system']['inventory'] = $this->parse_inventory($this->input['inventory']);
+			$this->output['system']['serial'] = $this->parse_inventory_to_serial($this->input['inventory']);
 		}
 
 		if($this->input['lldp'])
 		{
-			$this->output['neighbors']['lldp'] = $this->parse_lldp_to_neighbors();
+			$this->output['neighbors']['lldp'] = $this->parse_lldp_to_neighbors($this->input['lldp']);
 			
 		}
 
 		if($this->input['cdp'])
 		{
-			$this->output['neighbors']['cdp'] = $this->parse_cdp_to_neighbors();
+			$this->output['neighbors']['cdp'] = $this->parse_cdp_to_neighbors($this->input['cdp']);
 		
 		}
 
@@ -126,7 +136,7 @@ class CiscoIosParse
 
 		if($this->input['switchport'])
 		{
-			$this->output['interfaces'] = array_replace_recursive($this->output['interfaces'],$this->parse_switchport_to_interfaces());
+			//$this->output['interfaces'] = array_replace_recursive($this->output['interfaces'],$this->parse_switchport_to_interfaces());
 		}
 
 		if($this->input['stp'])
@@ -136,69 +146,6 @@ class CiscoIosParse
 		$this->merge_neighbors();
 	}
 
-/*
-	public function parse_run($run)
-	{
-		$regex1 = [
-			"system"	=>	[
-				"hostname"		=>	"/^hostname (\S+)/m",
-				"domain"		=>	"/^ip domain-name (\S+)/m",
-			],
-		];
-
-		$regex2 = [
-			"system"	=>	[
-				"usernames"		=>	"/^username (\S+)/m",
-				"dns"			=>	"/^ip name-server (\S+)/m",
-				"acls"			=>	"/^ip access-list \S+ (\S+)/m",
-				"snmpcommunity"	=>	"/^snmp-server community (\S+) (\S+) (\S+)/m",
-			],
-			"interfaces" => [
-				"interfaces"	=>	"/^interface (\S+)/m",
-			],
-
-		];
-
-		foreach($regex1 as $type => $config)
-		{
-			foreach($config as $param => $reg)
-			{
-				unset($HITS);
-				if(preg_match_all($reg, $run, $HITS))
-				{
-					//print_r($HITS);
-					$this->output[$type][$param] = $HITS[1][0];
-				}
-			}
-		}
-
-
-		foreach($regex2 as $type => $config)
-		{
-			foreach($config as $param => $reg)
-			{
-				unset($HITS);
-				if(preg_match_all($reg, $run, $HITS))
-				{
-					print_r($HITS);
-
-					foreach($HITS[1] as $HITSKEY => $HITSPARAMS)
-					{
-						foreach($HITS as $HKEY => $capgroup)
-						{
-							if($HKEY == 0 && $HKEY == 1)
-							{
-								continue;
-							}
-							$this->output[$type][$param][$HITSPARAMS][] = $capgroup[$HITSKEY];
-						}
-					}
-				}
-
-			}
-		}
-	}
-/**/
 	public static function netmask2cidr($netmask)
 	{
 		$bits = 0;
@@ -215,14 +162,14 @@ class CiscoIosParse
 		return $network;
 	}
 
-	public function parse_run_to_usernames()
+	public static function parse_run_to_usernames($run)
 	{
 		$reg1 = "/^username (\S+).*/m";
 		$reg2 = "/privilege (\d+)/m";
 		$reg3 = "/secret (\d+) (\S+)/m";
 
 		//find all usernames lines
-		if(preg_match_all($reg1, $this->input['run'], $HITS))
+		if(preg_match_all($reg1, $run, $HITS))
 		{
 			//print_r($HITS);
 			foreach($HITS[1] as $HKEY => $HIT)
@@ -244,37 +191,37 @@ class CiscoIosParse
 		return $usernames;
 	}
 
-	public function parse_run_to_hostname()
+	public static function parse_run_to_hostname($run)
 	{
 		$reg1 = "/^hostname (\S+)/m";
 
 		//find hostname line
-		if(preg_match_all($reg1, $this->input['run'], $HITS))
+		if(preg_match_all($reg1, $run, $HITS))
 		{
 			//print_r($HITS);
 			return $HITS[1][0];
 		}
 	}
 
-	public function parse_run_to_domain()
+	public static function parse_run_to_domain($run)
 	{
 		$reg1 = "/^ip domain-name (\S+)/m";
 		$reg2 = "/^ip domain name (\S+)/m";
-		if(preg_match_all($reg1, $this->input['run'], $HITS))
+		if(preg_match_all($reg1, $run, $HITS))
 		{
 			$domain = $HITS[1][0];
 		}
-		if(preg_match_all($reg2, $this->input['run'], $HITS))
+		if(preg_match_all($reg2, $run, $HITS))
 		{
 			$domain = $HITS[1][0];
 		}
 		return $domain;
 	}
 
-	public function parse_run_to_name_servers()
+	public static function parse_run_to_name_servers($run)
 	{
 		$reg1 = "/^ip name-server (\S+)/m";
-		if(preg_match_all($reg1, $this->input['run'], $HITS))
+		if(preg_match_all($reg1, $run, $HITS))
 		{
 			foreach($HITS[1] as $key => $server)
 			{
@@ -285,10 +232,11 @@ class CiscoIosParse
 		return $servers;
 	}
 
-	public function parse_run_to_vrfs()
+	public static function parse_run_to_vrfs($run)
 	{
+		$vrfs = [];
 		$reg = "/vrf definition (\S+)/";
-		if(preg_match_all($reg, $this->input['run'], $HITS, PREG_SET_ORDER))
+		if(preg_match_all($reg, $run, $HITS, PREG_SET_ORDER))
 		{
 			foreach($HITS as $vrf)
 			{
@@ -298,14 +246,14 @@ class CiscoIosParse
 		return $vrfs;
 	}
 
-	public function parse_run_to_aaa()
+	public static function parse_run_to_aaa($run)
 	{
 	
 	}
 	
-	public function parse_run_to_snmp_location()
+	public function parse_run_to_snmp_location($run)
 	{
-		if(preg_match("/snmp-server location (.*)/", $this->input['run'], $HITS1))
+		if(preg_match("/snmp-server location (.*)/", $run, $HITS1))
 		{
 			$return['string'] = $HITS1[1];
 			$array = json_decode($HITS1[1],true);
@@ -320,12 +268,12 @@ class CiscoIosParse
 		return $return;
 	}
 	
-	public function parse_run_to_ntp()
+	public static function parse_run_to_ntp($run)
 	{
 		$reg = "/ntp server (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/";
 		$reg2 = "/ntp server vrf (\S+) (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/";
 		$reg3 = "/ntp source (\S+)/";
-		if(preg_match_all($reg, $this->input['run'], $HITS, PREG_SET_ORDER))
+		if(preg_match_all($reg, $run, $HITS, PREG_SET_ORDER))
 		{
 			//print_r($HITS);
 			foreach($HITS as $ntp1)
@@ -333,7 +281,7 @@ class CiscoIosParse
 				$ntp['servers'][] = $ntp1[1];
 			}
 		} 
-		if (preg_match_all($reg2, $this->input['run'], $HITS2, PREG_SET_ORDER)) {
+		if (preg_match_all($reg2, $run, $HITS2, PREG_SET_ORDER)) {
 			//print_r($HITS2);
 			foreach($HITS2 as $ntp2)
 			{
@@ -341,7 +289,7 @@ class CiscoIosParse
 				$ntp['servers'][$ntp2[2]]['vrf'] = $ntp2[1];
 			}
 		}
-		if (preg_match($reg3, $this->input['run'], $HITS3)) {
+		if (preg_match($reg3, $run, $HITS3)) {
 			//print_r($HITS3);
 			$ntp['sourceint'] = $HITS3[1];
 		}
@@ -350,12 +298,12 @@ class CiscoIosParse
 		return $ntp;
 	}
 	
-	public function parse_run_to_policymap()
+	public static function parse_run_to_policymap($run)
 	{
 
 	}
 
-	public function parse_version_to_uptime()
+	public static function parse_version_to_uptime($version)
 	{
 		$reg1 = "/uptime is (.+)/m";
 		$reg2 = "/(\d+) year/m";
@@ -364,7 +312,7 @@ class CiscoIosParse
 		$reg5 = "/(\d+) hour/m";
 		$reg6 = "/(\d+) minute/m";
 
-		if(preg_match_all($reg1, $this->input['version'], $HITS))
+		if(preg_match_all($reg1, $version, $HITS))
 		{
 			if(preg_match_all($reg2, $HITS[1][0], $HITS2))
 			{
@@ -391,33 +339,33 @@ class CiscoIosParse
 		return $uptime;
 	}
 
-	public function parse_version_to_model()
+	public static function parse_version_to_model($version)
 	{
-			if (preg_match('/.*isco\s+(WS-\S+)\s.*/', $this->input['version'], $reg))
+			if (preg_match('/.*isco\s+(WS-\S+)\s.*/', $version, $reg))
 			{
 			$model = $reg[1];
 
 			return $model;
 		}
-		if (preg_match('/.*isco\s+(OS-\S+)\s.*/', $this->input['version'], $reg))
+		if (preg_match('/.*isco\s+(OS-\S+)\s.*/', $version, $reg))
 		{
 			$model = $reg[1];
 
 			return $model;
 		}
-		if (preg_match('/.*ardware:\s+(\S+),.*/', $this->input['version'], $reg))
+		if (preg_match('/.*ardware:\s+(\S+),.*/', $version, $reg))
 		{
 			$model = $reg[1];
 
 			return $model;
 		}
-		if (preg_match('/.*ardware:\s+(\S+).*/', $this->input['version'], $reg))
+		if (preg_match('/.*ardware:\s+(\S+).*/', $version, $reg))
 		{
 			$model = $reg[1];
 
 			return $model;
 		}
-		if (preg_match('/^[c,C]isco\s(\S+)\s\(.*/m', $this->input['version'], $reg))
+		if (preg_match('/^[c,C]isco\s(\S+)\s\(.*/m', $version, $reg))
 		{
 			$model = $reg[1];
 
@@ -426,44 +374,44 @@ class CiscoIosParse
 	}
 	
 	
-	public function parse_version_to_ios()
+	public static function parse_version_to_ios($version)
 	{
 		$reg1 = "/Cisco (IOS) Software/m";
 		$reg2 = "/Cisco (IOS XE) Software/m";
-		if (preg_match($reg1, $this->input['version'], $HITS1))
+		if (preg_match($reg1, $version, $HITS1))
 		{
 			$os['type'] = $HITS1[1];
 		}
-		if (preg_match($reg2, $this->input['version'], $HITS2))
+		if (preg_match($reg2, $version, $HITS2))
 		{
 			$os['type'] = $HITS2[1];
 		}
 		$reg3 = '/System image file is "\S+:\/{0,1}(\S+)"/m';
-		if (preg_match($reg3, $this->input['version'], $HITS3))
+		if (preg_match($reg3, $version, $HITS3))
 		{
 			$os['version'] = $HITS3[1];
 		}
 		$reg4 = '/Compiled \S+ (\S+)/';
-		if (preg_match($reg4, $this->input['version'], $HITS4))
+		if (preg_match($reg4, $version, $HITS4))
 		{
 			$os['date'] = $HITS4[1];
 		}		
 		return $os;
 	}
 	
-	public function parse_version_to_license()
+	public static function parse_version_to_license($version)
 	{
 		$reg1 = "/License Level: (\S+)/";
-		if (preg_match($reg1, $this->input['version'], $HITS1))
+		if (preg_match($reg1, $version, $HITS1))
 		{
 			$license[$HITS1[1]]['current'] = $HITS1[1];
 			$reg2 = "/License Type: (\S+)/";
-			if (preg_match($reg2, $this->input['version'], $HITS2))
+			if (preg_match($reg2, $version, $HITS2))
 			{
 				$license[$HITS1[1]]['type'] = $HITS2[1];
 			}
 			$reg3 = "/Next reload license Level: (\S+)/";
-			if (preg_match($reg3, $this->input['version'], $HITS3))
+			if (preg_match($reg3, $version, $HITS3))
 			{
 				$license[$HITS1[1]]['reboot'] = $HITS3[1];
 			}
@@ -477,7 +425,7 @@ class CiscoIosParse
 		];
 		foreach($reg as $package => $reg)
 		{
-			if (preg_match($reg, $this->input['version'], $HITS))
+			if (preg_match($reg, $version, $HITS))
 			{
 				if($HITS[1] != "None")
 				{
@@ -490,30 +438,30 @@ class CiscoIosParse
 		return $license;		
 	}
 
-	public function parse_version_to_confreg()
+	public static function parse_version_to_confreg($version)
 	{
 		$reg = "/Configuration register is (\S+)/";
-		if (preg_match($reg, $this->input['version'], $HITS1))
+		if (preg_match($reg, $version, $HITS1))
 		{
 			$confreg = $HITS1[1];
 		}
 		return $confreg;
 	}
 	
-	public function parse_version_to_ram()
+	public static function parse_version_to_ram($version)
 	{
 		$reg1 = "/with (\d+\S|\d+\S\/\d+\S) bytes of memory/m";
-		if (preg_match($reg1, $this->input['version'], $HITS1))
+		if (preg_match($reg1, $version, $HITS1))
 		{
 			$ram = $HITS1[1];
 		}
 		return $ram;
 	}
 
-	public function parse_version_to_hostname()
+	public static function parse_version_to_hostname($version)
 	{
 		$reg1 = "/(\S+) uptime/";
-		if (preg_match($reg1, $this->input['version'], $HITS1))
+		if (preg_match($reg1, $version, $HITS1))
 		{
 			$hostname = $HITS1[1];
 		}
@@ -521,27 +469,27 @@ class CiscoIosParse
 	}
 
 
-	public function parse_version_to_serial()
+	public static function parse_version_to_serial($version)
 	{
 		$reg1 = "/^Processor board ID (\S+)/m";
-		if (preg_match($reg1, $this->input['version'], $HITS1))
+		if (preg_match($reg1, $version, $HITS1))
 		{
 			$serial = $HITS1[1];
 		}
 		return $serial;
 	}
 	
-	function parse_run_to_ips()
+	public static function parse_run_to_ips($run)
 	{
 		$reg1 = "/ip address (\d+.\d+.\d+.\d+) (\d+.\d+.\d+.\d+)/";
 		
-		foreach(explode("\n", $this->input['run']) as $line)
+		foreach(explode("\n", $run) as $line)
 		{
 			if (preg_match($reg1, $line, $HITS1))
 			{
-				$ips[$HITS1[1]]['network'] = $this->cidr2network($HITS1[1],$this->netmask2cidr($HITS1[2]));
+				$ips[$HITS1[1]]['network'] = self::cidr2network($HITS1[1],self::netmask2cidr($HITS1[2]));
 				$ips[$HITS1[1]]['mask'] = $HITS1[2];
-				$ips[$HITS1[1]]['cidr'] = $this->netmask2cidr($HITS1[2]);
+				$ips[$HITS1[1]]['cidr'] = self::netmask2cidr($HITS1[2]);
 			}
 		}
 		return $ips;
@@ -694,6 +642,7 @@ class CiscoIosParse
 	{
 		$LINES = explode("\n", $run); 
 		$INT = null;
+		$INTCFG = "";
 		foreach($LINES as $LINE)
 		{
 			if ($LINE == "")
@@ -744,7 +693,7 @@ class CiscoIosParse
 		return $array;
 	}
 
-	public function parse_run_to_mgmt_interface()
+	public static function parse_run_to_mgmt_interface($run)
 	{
 		$regs = [
 			'/.*source.* (\S+)/',
@@ -757,10 +706,14 @@ class CiscoIosParse
 			'/snmp-server trap-source (\S+)/',
 			'/ip flow-export source (\S+)/',	
 		];
-
+		$SOURCES = [];
 		foreach($regs as $reg){
-			if (preg_match($reg, $this->input['run'], $HITS))
+			if (preg_match($reg, $run, $HITS))
 			{
+				if(!isset($SOURCES[$HITS[1]]))
+				{
+					$SOURCES[$HITS[1]] = 0;
+				}
 				$SOURCES[$HITS[1]]++;
 			}
 		}
@@ -770,18 +723,22 @@ class CiscoIosParse
 			$return['interface'] = $SOURCE;
 			break;
 		}
-		foreach($this->output['interfaces'][$SOURCE]['ip'] as $ip => $mask)
+		$interfaces = self::parse_run_to_interfaces($run);
+		if(isset($interfaces[$SOURCE]))
 		{
-			$return['ip'] = $ip;
-			break;
+			foreach($interfaces[$SOURCE]['ip'] as $ip => $mask)
+			{
+				$return['ip'] = $ip;
+				break;
+			}
 		}
 		return $return;
 	}
 
-	public function parse_inventory()
+	public static function parse_inventory($inventory)
 	{
 		$reg = '/NAME:\s*(\S.*\S),\s*DESCR:\s*(.*)\nPID:\s*(\S.*\S)\s*,\s*VID:\s*(\S.*\S)\s*,\s*SN:\s*(\S.*\S)/';
-		if (preg_match_all($reg, $this->input['inventory'], $HITS, PREG_SET_ORDER))
+		if (preg_match_all($reg, $inventory, $HITS, PREG_SET_ORDER))
 		{
 			foreach($HITS as $key => $entity)
 			{
@@ -798,10 +755,10 @@ class CiscoIosParse
 		}
 	}
 
-	public function parse_inventory_to_serial()
+	public static function parse_inventory_to_serial($inventory)
 	{
 		$reg = '/NAME:\s*(\S.*\S),\s*DESCR:\s*(.*)\nPID:\s*(\S.*\S)\s*,\s*VID:\s*(\S.*\S)\s*,\s*SN:\s*(\S.*\S)/';
-		if (preg_match_all($reg, $this->input['inventory'], $HITS, PREG_SET_ORDER))
+		if (preg_match_all($reg, $inventory, $HITS, PREG_SET_ORDER))
 		{
 			foreach($HITS as $key => $entity)
 			{
@@ -812,7 +769,7 @@ class CiscoIosParse
 		}
 	}
 
-	public function name_unabbreviate($name)
+	public static function name_unabbreviate($name)
 	{
 		$shortcuts = [
 			"fa" 	=>	"fastethernet",
@@ -841,7 +798,7 @@ class CiscoIosParse
 		return $name;
 	}
 	
-	public function name_abbreviate($name)
+	public static function name_abbreviate($name)
 	{
 		$shortcuts = [
 			"fa" 	=>	"fastethernet",
@@ -870,9 +827,9 @@ class CiscoIosParse
 		return $name;
 	}
 
-	public function dns_name_converter($name)
+	public static function dns_name_converter($name)
 	{
-		$newname = $this->name_abbreviate($name);
+		$newname = self::name_abbreviate($name);
 		$newname = str_replace("/","-",$newname);
 		$newname = str_replace(".","-",$newname);
 		return $newname;	
@@ -882,20 +839,22 @@ class CiscoIosParse
 	{
 		foreach($this->output['interfaces'] as $intname => $intcfg)
 		{
-			foreach($intcfg['ip'] as $ip => $ipcfg)
+			if(isset($intcfg['ip']))
 			{
-				unset($tmparray);
-				if(!($ipcfg['secondary']))
+				foreach($intcfg['ip'] as $ip => $ipcfg)
 				{
-					$tmparray['name'] = strtolower($this->dns_name_converter($intname) . "." . $this->output['system']['hostname'] . "." . $this->output['system']['domain']);
-					$tmparray['type'] = "a";
-					$tmparray['value'] = $ip;
-					$dnsnames[] = $tmparray;
-					break;
+					unset($tmparray);
+					if(!isset($ipcfg['secondary']))
+					{
+						$tmparray['name'] = strtolower(self::dns_name_converter($intname) . "." . $this->output['system']['hostname'] . "." . $this->output['system']['domain']);
+						$tmparray['type'] = "a";
+						$tmparray['value'] = $ip;
+						$dnsnames[] = $tmparray;
+						break;
+					}
+					//$tmparray = 
 				}
-				//$tmparray = 
 			}
-
 		}
 
 		if($this->output['system']['hostname'])
@@ -908,13 +867,11 @@ class CiscoIosParse
 		return $dnsnames;
 	}
 
-	public function parse_cdp_to_neighbors()
+	public static function parse_cdp_to_neighbors($cdp)
 	{
 		$cdpreg = "/Device ID:.*Management address\(es\):/sU";
-		if(preg_match_all($cdpreg,$this->input['cdp'],$hits,PREG_SET_ORDER))
+		if(preg_match_all($cdpreg,$cdp,$hits,PREG_SET_ORDER))
 		{
-			//print_r($hits);
-			
 			foreach($hits as $hit)
 			{
 				$cdpdevice = $hit[0];
@@ -939,8 +896,8 @@ class CiscoIosParse
 				$reg = "/Interface:\s*(\S+),\s*Port ID\s*\(outgoing port\):\s*(\S+)/";	
 				if(preg_match($reg,$cdpdevice,$hits))
 				{
-					$tmparray['localint'] = $this->name_unabbreviate($hits[1]);
-					$tmparray['remoteint'] = $this->name_unabbreviate($hits[2]);
+					$tmparray['localint'] = self::name_unabbreviate($hits[1]);
+					$tmparray['remoteint'] = self::name_unabbreviate($hits[2]);
 				}
 				$reg = "/Version\s*:\s*\n(.*)advertisement\s+version:/s";
 				if(preg_match($reg,$cdpdevice,$hits))
@@ -965,10 +922,10 @@ class CiscoIosParse
 		return $neighbors;
 	}
 	
-	public function parse_lldp_to_neighbors()
+	public static function parse_lldp_to_neighbors($lldp)
 	{
 		$lldpreg = "/Chassis id:.*Management Addresses:\s+IP:\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s/sU";
-		if(preg_match_all($lldpreg,$this->input['lldp'],$hits,PREG_SET_ORDER))
+		if(preg_match_all($lldpreg,$lldp,$hits,PREG_SET_ORDER))
 		{
 			foreach($hits as $hit)
 			{
@@ -990,7 +947,7 @@ class CiscoIosParse
 				if(preg_match($reg,$lldpdevice,$hits))
 				{
 					//print_r($hits);
-					$tmparray['portid'] = $this->name_unabbreviate($hits[1]);
+					$tmparray['portid'] = self::name_unabbreviate($hits[1]);
 				}
 				$reg = "/Port\s+Description:\s+(\S+)/";
 				if(preg_match($reg,$lldpdevice,$hits))
@@ -1011,33 +968,46 @@ class CiscoIosParse
 				unset($tmparray);
 			}
 		}
-		return $neighbors;
+		if(isset($neighbors))
+		{
+			return $neighbors;
+		}
 	}
 	
 	public function merge_neighbors()
 	{
-		foreach($this->output['neighbors']['lldp'] as $lldpneighbor)
+		if(isset($this->output['neighbors']['lldp']))
 		{
-			$this->output['neighbors']['all'][$lldpneighbor['name']]['chassisid'] = $lldpneighbor['chassisid'];
-			$this->output['neighbors']['all'][$lldpneighbor['name']]['remoteint'] = $lldpneighbor['portid'];
-			$this->output['neighbors']['all'][$lldpneighbor['name']]['portdesc'] = $lldpneighbor['portdesc'];
-			$this->output['neighbors']['all'][$lldpneighbor['name']]['ip'] = $lldpneighbor['ip'];
-			$this->output['neighbors']['all'][$lldpneighbor['name']]['version'] = $lldpneighbor['version'];
+			foreach($this->output['neighbors']['lldp'] as $lldpneighbor)
+			{
+				$this->output['neighbors']['all'][$lldpneighbor['name']]['chassisid'] = $lldpneighbor['chassisid'];
+				$this->output['neighbors']['all'][$lldpneighbor['name']]['remoteint'] = $lldpneighbor['portid'];
+				$this->output['neighbors']['all'][$lldpneighbor['name']]['portdesc'] = $lldpneighbor['portdesc'];
+				$this->output['neighbors']['all'][$lldpneighbor['name']]['ip'] = $lldpneighbor['ip'];
+				$this->output['neighbors']['all'][$lldpneighbor['name']]['version'] = $lldpneighbor['version'];
+			}
 		}
-		foreach($this->output['neighbors']['cdp'] as $cdpneighbor)
+		if(isset($this->output['neighbors']['cdp']))
 		{
-			$this->output['neighbors']['all'][$cdpneighbor['name']]['model'] = $cdpneighbor['model'];
-			$this->output['neighbors']['all'][$cdpneighbor['name']]['localint'] = $cdpneighbor['localint'];
-			$this->output['neighbors']['all'][$cdpneighbor['name']]['remoteint'] = $cdpneighbor['remoteint'];
-			$this->output['neighbors']['all'][$cdpneighbor['name']]['ip'] = $cdpneighbor['ip'];
-			$this->output['neighbors']['all'][$cdpneighbor['name']]['version'] = $cdpneighbor['version'];
-			$this->output['neighbors']['all'][$cdpneighbor['name']]['nativevlan'] = $cdpneighbor['nativevlan'];
-			$this->output['neighbors']['all'][$cdpneighbor['name']]['duplex'] = $cdpneighbor['duplex'];
+			foreach($this->output['neighbors']['cdp'] as $cdpneighbor)
+			{
+				$this->output['neighbors']['all'][$cdpneighbor['name']]['model'] = $cdpneighbor['model'];
+				$this->output['neighbors']['all'][$cdpneighbor['name']]['localint'] = $cdpneighbor['localint'];
+				$this->output['neighbors']['all'][$cdpneighbor['name']]['remoteint'] = $cdpneighbor['remoteint'];
+				$this->output['neighbors']['all'][$cdpneighbor['name']]['ip'] = $cdpneighbor['ip'];
+				$this->output['neighbors']['all'][$cdpneighbor['name']]['version'] = $cdpneighbor['version'];
+				if(isset($cdpneighbor['nativevlan']))
+				{
+					$this->output['neighbors']['all'][$cdpneighbor['name']]['nativevlan'] = $cdpneighbor['nativevlan'];
+				}
+				$this->output['neighbors']['all'][$cdpneighbor['name']]['duplex'] = $cdpneighbor['duplex'];
+			}
 		}
 	}
 	
 	function parse_switchport_to_interfaces()
 	{
+		$array=[];
 		$LINES = explode("\n", $this->input['switchport']); 
 		$INT = null;
 		$NEWINT = null;
@@ -1065,8 +1035,10 @@ class CiscoIosParse
 				$TMPARRAY[] = $LINE;
 			}
 		}
-		
-		$array[$this->name_unabbreviate($INT)] = $TMPARRAY;
+		if(isset($TMPARRAY))
+		{
+			$array[$this->name_unabbreviate($INT)] = $TMPARRAY;
+		}
 		//print_r($array);
 
 		foreach ($array as $interface => $ifconfig)
@@ -1112,7 +1084,10 @@ class CiscoIosParse
 			}
 			$newarray[$interface]['switchport'] = $TMPARRAY;
 		}
-		return $newarray;
+		if(isset($newarray))
+		{
+			return $newarray;
+		}
 	}
 	
 }

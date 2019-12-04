@@ -42,14 +42,19 @@ class CiscoIosxeParse
 	//public $interfaces = [];
 	public $output = [];
 
-	public function __construct()
+	public function __construct($array)
 	{
-
-	}
-
-	public function __destruct()
-	{
-
+		if(is_array($array))
+		{
+			foreach($array as $key => $value)
+			{
+				if(array_key_exists($key,$this->input))
+				{
+					$this->input[$key] = $value;
+				}
+				$this->update();
+			}
+		}
 	}
 
 	public function input_data($data,$cmdtype)
