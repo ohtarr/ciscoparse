@@ -376,6 +376,7 @@ class CiscoIosParse
 	
 	public static function parse_version_to_ios($version)
 	{
+		$os = null;
 		$reg1 = "/Cisco (IOS) Software/m";
 		$reg2 = "/Cisco (IOS XE) Software/m";
 		if (preg_match($reg1, $version, $HITS1))
@@ -401,6 +402,7 @@ class CiscoIosParse
 	
 	public static function parse_version_to_license($version)
 	{
+		$license = null;
 		$reg1 = "/License Level: (\S+)/";
 		if (preg_match($reg1, $version, $HITS1))
 		{
