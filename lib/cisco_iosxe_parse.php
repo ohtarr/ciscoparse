@@ -67,7 +67,11 @@ class CiscoIosxeParse
 
 	public function update()
 	{
-		$this->output = array();
+		$this->output = [
+			'system' 		=>	[],
+			'ips'			=>	[],
+			'interfaces'	=>	[],
+		];
 		if($this->input['run'])
 		{
 			$this->output['system']['hostname'] = $this->parse_run_to_hostname();
