@@ -869,6 +869,7 @@ class CiscoIosParse
 
 	public static function parse_cdp_to_neighbors($cdp)
 	{
+		$neighbors = null;
 		$cdpreg = "/Device ID:.*Management address\(es\):/sU";
 		if(preg_match_all($cdpreg,$cdp,$hits,PREG_SET_ORDER))
 		{
