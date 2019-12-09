@@ -57,8 +57,8 @@ class CiscoIosParse
 				{
 					$this->input[$key] = $value;
 				}
-				$this->update();
 			}
+			$this->update();
 		}
 	}
 
@@ -251,7 +251,7 @@ class CiscoIosParse
 	
 	}
 	
-	public function parse_run_to_snmp_location($run)
+	public static function parse_run_to_snmp_location($run)
 	{
 		if(preg_match("/snmp-server location (.*)/", $run, $HITS1))
 		{
@@ -720,20 +720,37 @@ class CiscoIosParse
 			}
 		}
 		array_multisort($SOURCES,SORT_DESC);
+		//print_r($SOURCES);
+		$value = reset($SOURCES);
+		$key = key($SOURCES);
+		print $key . " " . $value . "\n";
+
+		$return['interface'] = $key;
+
+		$interfaces = self::parse_run_to_interfaces($run);
+		if(isset($interfaces[strtolower($key)]))
+		{
+			foreach($interfaces[strtolower($key)]['ip'] as $ip => $mask)
+			{
+				$return['ip'] = $ip;
+				break;
+			}
+		}		
+/*
 		foreach($SOURCES as $SOURCE => $COUNT)
 		{
 			$return['interface'] = $SOURCE;
 			break;
 		}
 		$interfaces = self::parse_run_to_interfaces($run);
-		if(isset($interfaces[$SOURCE]))
+		if(isset($interfaces[strtolower($SOURCE)]))
 		{
 			foreach($interfaces[$SOURCE]['ip'] as $ip => $mask)
 			{
 				$return['ip'] = $ip;
 				break;
 			}
-		}
+		}*/
 		return $return;
 	}
 
