@@ -723,8 +723,6 @@ class CiscoIosParse
 		//print_r($SOURCES);
 		$value = reset($SOURCES);
 		$key = key($SOURCES);
-		print $key . " " . $value . "\n";
-
 		$return['interface'] = $key;
 
 		$interfaces = self::parse_run_to_interfaces($run);
@@ -736,21 +734,6 @@ class CiscoIosParse
 				break;
 			}
 		}		
-/*
-		foreach($SOURCES as $SOURCE => $COUNT)
-		{
-			$return['interface'] = $SOURCE;
-			break;
-		}
-		$interfaces = self::parse_run_to_interfaces($run);
-		if(isset($interfaces[strtolower($SOURCE)]))
-		{
-			foreach($interfaces[$SOURCE]['ip'] as $ip => $mask)
-			{
-				$return['ip'] = $ip;
-				break;
-			}
-		}*/
 		return $return;
 	}
 
