@@ -927,7 +927,8 @@ class CiscoIosParse
 	
 	public static function parse_lldp_to_neighbors($lldp)
 	{
-		$lldpreg = "/Chassis id:.*Management Addresses:\s+IP:\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s/sU";
+		//$lldpreg = "/Chassis id:.*Management Addresses:\s+IP:\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s/sU";
+		$lldpreg = "/Local Intf:.*?Vlan ID:.*?\n/s";
 		if(preg_match_all($lldpreg,$lldp,$hits,PREG_SET_ORDER))
 		{
 			foreach($hits as $hit)
@@ -945,6 +946,12 @@ class CiscoIosParse
 				if(preg_match($reg,$lldpdevice,$hits))
 				{
 					$tmparray['chassisid'] = $hits[1];
+				}
+				$reg = "/Local\s+Intf:\s+(\S+)/";
+				if(preg_match($reg,$lldpdevice,$hits))
+				{
+					//print_r($hits);
+					$tmparray['localint'] = self::name_unabbreviate($hits[1]);
 				}
 				$reg = "/Port\s+id:\s+(\S+)/";
 				if(preg_match($reg,$lldpdevice,$hits))
@@ -984,6 +991,7 @@ class CiscoIosParse
 			foreach($this->output['neighbors']['lldp'] as $lldpneighbor)
 			{
 				$this->output['neighbors']['all'][$lldpneighbor['name']]['chassisid'] = $lldpneighbor['chassisid'];
+				$this->output['neighbors']['all'][$lldpneighbor['name']]['localint'] = $lldpneighbor['localint'];
 				$this->output['neighbors']['all'][$lldpneighbor['name']]['remoteint'] = $lldpneighbor['portid'];
 				$this->output['neighbors']['all'][$lldpneighbor['name']]['portdesc'] = $lldpneighbor['portdesc'];
 				$this->output['neighbors']['all'][$lldpneighbor['name']]['ip'] = $lldpneighbor['ip'];

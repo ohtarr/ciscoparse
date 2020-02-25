@@ -206,6 +206,7 @@ class CiscoIosxeParse
 
 	public function parse_run_to_usernames()
 	{
+		$usernames = [];
 		$reg1 = "/^username (\S+).*/m";
 		$reg2 = "/privilege (\d+)/m";
 		$reg3 = "/secret (\d+) (\S+)/m";
@@ -262,6 +263,7 @@ class CiscoIosxeParse
 
 	public function parse_run_to_name_servers()
 	{
+		$servers = null;
 		$reg1 = "/^ip name-server (\S+)/m";
 		if(preg_match_all($reg1, $this->input['run'], $HITS))
 		{
@@ -276,6 +278,7 @@ class CiscoIosxeParse
 
 	public function parse_run_to_vrfs()
 	{
+		$vrfs = null;
 		$reg = "/vrf definition (\S+)/";
 		if(preg_match_all($reg, $this->input['run'], $HITS, PREG_SET_ORDER))
 		{
@@ -294,6 +297,7 @@ class CiscoIosxeParse
 	
 	public function parse_run_to_ntp()
 	{
+		$ntp = null;
 		$reg = "/ntp server (\S+)/";
 		$reg2 = "/ntp server vrf (\S+) (\S+)/";
 		$reg3 = "/ntp source (\S+)/";
@@ -329,6 +333,7 @@ class CiscoIosxeParse
 
 	public function parse_version_to_uptime()
 	{
+		$uptime = null;
 		$reg1 = "/uptime is (.+)/m";
 		$reg2 = "/(\d+) year/m";
 		$reg3 = "/(\d+) week/m";
@@ -365,34 +370,29 @@ class CiscoIosxeParse
 
 	public function parse_version_to_model()
 	{
-			if (preg_match('/.*isco\s+(WS-\S+)\s.*/', $this->input['version'], $reg))
-			{
+		if (preg_match('/.*isco\s+(WS-\S+)\s.*/', $this->input['version'], $reg))
+		{
 			$model = $reg[1];
-
 			return $model;
 		}
 		if (preg_match('/.*isco\s+(OS-\S+)\s.*/', $this->input['version'], $reg))
 		{
 			$model = $reg[1];
-
 			return $model;
 		}
 		if (preg_match('/.*ardware:\s+(\S+),.*/', $this->input['version'], $reg))
 		{
 			$model = $reg[1];
-
 			return $model;
 		}
 		if (preg_match('/.*ardware:\s+(\S+).*/', $this->input['version'], $reg))
 		{
 			$model = $reg[1];
-
 			return $model;
 		}
 		if (preg_match('/^[c,C]isco\s(\S+)\s\(.*/m', $this->input['version'], $reg))
 		{
 			$model = $reg[1];
-
 			return $model;
 		}
 	}
@@ -400,6 +400,7 @@ class CiscoIosxeParse
 	
 	public function parse_version_to_ios()
 	{
+		$os = null;
 		$reg1 = "/Cisco (IOS) Software/m";
 		$reg2 = "/Cisco (IOS XE) Software/m";
 		if (preg_match($reg1, $this->input['version'], $HITS1))
@@ -425,6 +426,7 @@ class CiscoIosxeParse
 	
 	public function parse_version_to_license()
 	{
+		$license = null;
 		$reg1 = "/License Level: (\S+)/";
 		if (preg_match($reg1, $this->input['version'], $HITS1))
 		{
@@ -464,6 +466,7 @@ class CiscoIosxeParse
 
 	public function parse_version_to_confreg()
 	{
+		$confreg = null;
 		$reg = "/Configuration register is (\S+)/";
 		if (preg_match($reg, $this->input['version'], $HITS1))
 		{
@@ -474,6 +477,7 @@ class CiscoIosxeParse
 	
 	public function parse_version_to_ram()
 	{
+		$ram = null;
 		$reg1 = "/with (\d+\S|\d+\S\/\d+\S) bytes of memory/m";
 		if (preg_match($reg1, $this->input['version'], $HITS1))
 		{
@@ -484,6 +488,7 @@ class CiscoIosxeParse
 
 	public function parse_version_to_hostname()
 	{
+		$hostname = null;
 		$reg1 = "/(\S+) uptime/";
 		if (preg_match($reg1, $this->input['version'], $HITS1))
 		{
@@ -495,6 +500,7 @@ class CiscoIosxeParse
 
 	public function parse_version_to_serial()
 	{
+		$serial = null;
 		$reg1 = "/^Processor board ID (\S+)/m";
 		if (preg_match($reg1, $this->input['version'], $HITS1))
 		{
@@ -505,6 +511,7 @@ class CiscoIosxeParse
 	
 	function parse_run_to_ips()
 	{
+		$ips = null;
 		$reg1 = "/ip address (\d+.\d+.\d+.\d+) (\d+.\d+.\d+.\d+)/";
 		
 		foreach(explode("\n", $this->input['run']) as $line)
@@ -540,6 +547,7 @@ class CiscoIosxeParse
 
 	function parse_run_to_interfaces()
 	{
+		$INTARRAY = [];
 		$LINES = explode("\n", $this->input['run']); 
 		$INT = null;
 		foreach($LINES as $LINE)
@@ -689,6 +697,8 @@ class CiscoIosxeParse
 
 	public function parse_run_to_mgmt_interface()
 	{
+		$SOURCES = [];
+		$return = null;
 		$regs = [
 			'/.*source.* (\S+)/',
 			'/ip tacacs source-interface (\S+)/',
@@ -704,13 +714,13 @@ class CiscoIosxeParse
 		foreach($regs as $reg){
 			if (preg_match($reg, $this->input['run'], $HITS))
 			{
-				//print_r($HITS);
+				print_r($HITS);
 				//$SOURCES[$HITS[1]] = $SOURCES[$HITS[1]]++;
 				$SOURCES[$HITS[1]]++;
 			}
 		}
 		array_multisort($SOURCES,SORT_DESC);
-		//print_r($SOURCES);
+		print_r($SOURCES);
 		foreach($SOURCES as $SOURCE => $COUNT)
 		{
 			$return['interface'] = $SOURCE;
@@ -726,6 +736,7 @@ class CiscoIosxeParse
 
 	public function parse_inventory()
 	{
+		$inv = null;
 		$reg = '/NAME:\s*(\S.*\S),\s*DESCR:\s*(.*)\nPID:\s*(\S.*\S)\s*,\s*VID:\s*(\S.*\S)\s*,\s*SN:\s*(\S.*\S)/';
 		if (preg_match_all($reg, $this->input['inventory'], $HITS, PREG_SET_ORDER))
 		{
@@ -746,6 +757,7 @@ class CiscoIosxeParse
 
 	public function parse_inventory_to_serial()
 	{
+		$sn = null;
 		$reg = '/NAME:\s*(\S.*\S),\s*DESCR:\s*(.*)\nPID:\s*(\S.*\S)\s*,\s*VID:\s*(\S.*\S)\s*,\s*SN:\s*(\S.*\S)/';
 		if (preg_match_all($reg, $this->input['inventory'], $HITS, PREG_SET_ORDER))
 		{
