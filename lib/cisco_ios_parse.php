@@ -47,7 +47,7 @@ class CiscoIosParse
 		'interfaces'	=>	[],
 	];
 
-	public function __construct($array)
+	public function __construct($array = null)
 	{
 		if(is_array($array))
 		{
@@ -83,6 +83,15 @@ class CiscoIosParse
 			'ips'			=>	[],
 			'interfaces'	=>	[],
 		];
+
+		//Parse System Info
+		//Parse Interfaces
+		//Parse IP Addresses
+		//Parse Neighbors
+		//Parse DNS Names
+		//Parse Inventory
+		//Parse Spanning Tree
+
 		if($this->input['run'])
 		{
 			$this->output['system']['hostname'] = $this->parse_run_to_hostname($this->input['run']);
@@ -131,7 +140,9 @@ class CiscoIosParse
 
 		if($this->input['interfaces'])
 		{
-			
+			//$this->output['interfaces'] = $this->parse_interfaces_to_interfaces($this->input['interfaces']);
+			$this->output['interfaces'] = array_replace_recursive($this->output['interfaces'],$this->parse_interfaces_to_interfaces($this->input['interfaces']));
+			$this->output['ips'] = array_replace_recursive($this->output['ips'],$this->parse_interfaces_to_ips($this->input['interfaces']));
 		}
 
 		if($this->input['switchport'])
@@ -154,6 +165,10 @@ class CiscoIosParse
 		foreach($netmask as $octect)
 			$bits += strlen(str_replace("0", "", decbin($octect)));
 		return $bits;
+	}
+
+	public static function cidr2netmask($int) {
+		return long2ip(-1 << (32 - (int)$int));
 	}
 
 	public static function cidr2network($ip, $cidr)
@@ -690,7 +705,7 @@ class CiscoIosParse
 			$tmp = self::parse_interface_config($interface);
 			$intname = strtolower($tmp['name']);
 			$array[$intname] = $tmp;
-			$array[$intname]['raw']= $interface;
+			$array[$intname]['raw_cfg']= $interface;
 		}
 		return $array;
 	}
@@ -1100,5 +1115,286 @@ class CiscoIosParse
 			return $newarray;
 		}
 	}
+
+	public static function parse_interfaces_to_raw_interfaces($interfaces)
+	{
+		$LINES = explode("\n", $interfaces); 
+		$INT = null;
+		$INTCFG = "";
+		foreach($LINES as $LINE)
+		{
+			if ($LINE == "")
+			{
+				continue;
+			}
+			$DEPTH  = strlen($LINE) - strlen(ltrim($LINE));
+
+			if($DEPTH == 0)
+			{
+				if($INT)
+				{
+					$tmparray[] = $INTCFG;
+					//$INTARRAY[$INT] = self::parse_interface_config($INT,$INTCFG);
+					$INTCFG = "";
+				}
+				if (preg_match("/(\S+) is .+,\s+line protocol is/", $LINE, $HITS))
+				{
+					$INT = strtolower($HITS[1]);
+					$INTCFG .= $LINE . "\n";
+				} else {
+					$INT = null;
+				}
+				continue;
+			}
+			if($DEPTH > 0)
+			{
+				if($INT)
+				{
+					$INTCFG .= $LINE . "\n";
+				}
+			}
+		}
+		//return $INTARRAY;
+		return $tmparray;
+	}
+
+	public static function parse_interfaces_to_interfaces($interfaces)
+	{
+		$interfaces = self::parse_interfaces_to_raw_interfaces($interfaces);
+		foreach($interfaces as $interface)
+		{
+			$tmp = self::parse_interface($interface);
+			$intname = strtolower($tmp['name']);
+			$array[$intname] = $tmp;
+			$array[$intname]['raw_interface']= $interface;
+		}
+		return $array;
+	}
+
+	public static function parse_interface($interface)
+	{
+		if(preg_match("/(\S+) is (.+),\s+line protocol is (\S+)/", $interface, $HITS1))
+		{
+			$INTNAME = $HITS1[1];
+			$INTARRAY['name']= $HITS1[1];
+			$INTARRAY['physical'] = $HITS1[2];
+			$INTARRAY['lineprotocol'] = $HITS1[3];
+			if($HITS1[2] == "administratively down")
+			{
+				$INTARRAY['shutdown'] = 1;
+			} else {
+				$INTARRAY['shutdown'] = 0;
+			}
+		}
+		if (preg_match("/Hardware is (.*),/",$interface,$HITS1))
+		{
+			$INTARRAY['hardware'] = $HITS1[1];
+		} elseif (preg_match("/Hardware is (.+)$/m",$interface,$HITS2)){
+			$INTARRAY['hardware'] = $HITS2[1];
+		}
+		if(preg_match("/, address is (\S{4}\.\S{4}\.\S{4})/", $interface, $HITS1))
+		{
+			$INTARRAY['mac'] = $HITS1[1];
+		}
+		if(preg_match("/Description: (.*)/", $interface, $HITS1))
+		{
+			$INTARRAY['description']['string'] = $HITS1[1];
+			$descarray = json_decode($HITS1[1],true);
+			if(is_array($descarray))
+			{
+				foreach($descarray as $key => $value)
+				{
+					$INTARRAY['description']['json'][$key] = $value;
+				}
+			}
+		}
+		if(preg_match("/Internet address is (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\/(\d{1,2})/", $interface, $HITS1))
+		{
+			$INTARRAY['ip'][$HITS1[1]]['mask'] = self::cidr2netmask($HITS1[2]);
+			$INTARRAY['ip'][$HITS1[1]]['cidr'] = $HITS1[2];
+			$INTARRAY['ip'][$HITS1[1]]['network'] = self::cidr2network($HITS1[1],$HITS1[2]);
+			//if($HITS1[3])
+			//{
+			//	$INTARRAY['ip'][$HITS1[1]]['secondary'] = 1;
+			//}
+		}
+		if(preg_match("/MTU (\S+) bytes, BW (\d+) Kbit\/sec, DLY (\d+) usec/", $interface, $HITS1))
+		{
+			$INTARRAY['ipmtu'] = $HITS1[1];
+			$INTARRAY['bandwidth'] = $HITS1[2];
+			$INTARRAY['dly'] = $HITS1[3];
+		}
+		if(preg_match("/reliability (\d+)\/255, txload (\d+)\/255, rxload (\d+)\/255/", $interface, $HITS1))
+		{
+			$INTARRAY['reliability'] = $HITS1[1];
+			$INTARRAY['txload'] = $HITS1[2];
+			$INTARRAY['rxload'] = $HITS1[3];
+		}
+		if(preg_match("/Encapsulation (\S+),/", $interface, $HITS1))
+		{
+			$INTARRAY['encapsulation'] = $HITS1[1];
+		}
+		if(preg_match("/^\s*(.*), (.*), media type is (.*)/m", $interface, $HITS1))
+		{
+			$INTARRAY['duplex'] = $HITS1[1];
+			$INTARRAY['speed'] = $HITS1[2];
+			$INTARRAY['mediatype'] = $HITS1[3];
+		}
+		if(preg_match("/output flow-control is (\S+), input flow-control is (\S+)/", $interface, $HITS1))
+		{
+			$INTARRAY['output_flow_control'] = $HITS1[1];
+			$INTARRAY['input_flow_control'] = $HITS1[2];
+		}
+		if(preg_match("/ARP type: (\S+), ARP Timeout (\S+)/", $interface, $HITS1))
+		{
+			$INTARRAY['arp_type'] = $HITS1[1];
+			$INTARRAY['arp_timeout'] = $HITS1[2];
+		}
+		if(preg_match("/Last clearing of \"show interface\" counters (\S+)/", $interface, $HITS1))
+		{
+			$INTARRAY['counters_cleared'] = $HITS1[1];
+		}
+		if(preg_match("/Input queue: (\d+)\/(\d+)\/(\d+)\/(\d+) \(size\/max\/drops\/flushes\); Total output drops: (\d+)/", $interface, $HITS1))
+		{
+			$INTARRAY['input_queue_size'] = $HITS1[1];
+			$INTARRAY['input_queue_max'] = $HITS1[2];
+			$INTARRAY['input_queue_drops'] = $HITS1[3];
+			$INTARRAY['input_queue_flushes'] = $HITS1[4];
+			$INTARRAY['total_output_drops'] = $HITS1[5];
+		}
+		if(preg_match("/Queueing strategy: (\S+)/", $interface, $HITS1))
+		{
+			$INTARRAY['queueing_strategy'] = $HITS1[1];
+		}
+		if(preg_match("/Output queue: (\d+)\/(\d+) \(size\/max\)/", $interface, $HITS1))
+		{
+			$INTARRAY['output_queue_size'] = $HITS1[1];
+			$INTARRAY['output_queue_max'] = $HITS1[2];
+		}
+		if(preg_match("/5 minute input rate (\d+) bits\/sec, (\d+) packets\/sec/", $interface, $HITS1))
+		{
+			$INTARRAY['5min_input_rate_bps'] = $HITS1[1];
+			$INTARRAY['5min_input_rate_pps'] = $HITS1[2];
+		}
+		if(preg_match("/5 minute output rate (\d+) bits\/sec, (\d+) packets\/sec/", $interface, $HITS1))
+		{
+			$INTARRAY['5min_output_rate_bps'] = $HITS1[1];
+			$INTARRAY['5min_output_rate_pps'] = $HITS1[2];
+		}
+		if(preg_match("/(\d+) packets input, (\d+) bytes, (\d+) no buffer/", $interface, $HITS1))
+		{
+			$INTARRAY['packets_input'] = $HITS1[1];
+			$INTARRAY['bytes_input'] = $HITS1[2];
+			$INTARRAY['no_buffer'] = $HITS1[2];
+		}
+		if(preg_match("/Received (\d+) broadcasts \((\d+) IP multicasts\)/", $interface, $HITS1))
+		{
+			$INTARRAY['broadcasts_received'] = $HITS1[1];
+			$INTARRAY['multicasts_received'] = $HITS1[2];
+		}
+		if(preg_match("/(\d+) runts, (\d+) giants, (\d+) throttles\)/", $interface, $HITS1))
+		{
+			$INTARRAY['runts_received'] = $HITS1[1];
+			$INTARRAY['giants_received'] = $HITS1[2];
+			$INTARRAY['throttles_received'] = $HITS1[2];
+		}
+		if(preg_match("/(\d+) input errors, (\d+) CRC, (\d+) frame, (\d+) overrun, (\d+) ignored/", $interface, $HITS1))
+		{
+			$INTARRAY['input_errors'] = $HITS1[1];
+			$INTARRAY['crc'] = $HITS1[2];
+			$INTARRAY['frame'] = $HITS1[3];
+			$INTARRAY['overrun'] = $HITS1[4];
+			$INTARRAY['ignored'] = $HITS1[5];
+		}
+		if(preg_match("/(\d+) watchdog, (\d+) multicast, (\d+) pause input/", $interface, $HITS1))
+		{
+			$INTARRAY['watchdog'] = $HITS1[1];
+			$INTARRAY['multicast'] = $HITS1[2];
+			$INTARRAY['pause_input'] = $HITS1[3];
+		}
+		if(preg_match("/(\d+) packets output, (\d+) bytes, (\d+) underruns/", $interface, $HITS1))
+		{
+			$INTARRAY['packets_output'] = $HITS1[1];
+			$INTARRAY['bytes_output'] = $HITS1[2];
+			$INTARRAY['underruns'] = $HITS1[3];
+		}
+		if(preg_match("/(\d+) output errors, (\d+) collisions, (\d+) interface resets/", $interface, $HITS1))
+		{
+			$INTARRAY['output_errors'] = $HITS1[1];
+			$INTARRAY['collisions'] = $HITS1[2];
+			$INTARRAY['interface_resets'] = $HITS1[3];
+		}
+		if(preg_match("/(\d+) unknown protocol drops/", $interface, $HITS1))
+		{
+			$INTARRAY['unknown_protocol_drops'] = $HITS1[1];
+		}
+		if(preg_match("/(\d+) babbles, (\d+) late collision, (\d+) deferred/", $interface, $HITS1))
+		{
+			$INTARRAY['babbles'] = $HITS1[1];
+			$INTARRAY['late_collision'] = $HITS1[2];
+			$INTARRAY['deferred'] = $HITS1[3];
+		}
+		if(preg_match("/(\d+) lost carrier, (\d+) no carrier, (\d+) pause output/", $interface, $HITS1))
+		{
+			$INTARRAY['lost_carrier'] = $HITS1[1];
+			$INTARRAY['no_carrier'] = $HITS1[2];
+			$INTARRAY['pause_output'] = $HITS1[3];
+		}
+		if(preg_match("/(\d+) output buffer failures, (\d+) output buffers swapped out/", $interface, $HITS1))
+		{
+			$INTARRAY['output_buffer_failures'] = $HITS1[1];
+			$INTARRAY['output_buffers_swapped_out'] = $HITS1[2];
+		}
+		if(preg_match("/Tunnel source (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) \((\S+)\), destination (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/", $interface, $HITS1))
+		{
+			$INTARRAY['tunnel_source_ip'] = $HITS1[1];
+			$INTARRAY['tunnel_source_interface'] = $HITS1[2];
+			$INTARRAY['tunnel_destination_ip'] = $HITS1[3];
+		}
+		if(preg_match("/Tunnel protocol\/transport (\S+)/", $interface, $HITS1))
+		{
+			$INTARRAY['tunnel_transport'] = $HITS1[1];
+		}
+		if(preg_match("/Tunnel transport MTU (\d+) bytes/", $interface, $HITS1))
+		{
+			$INTARRAY['tunnel_mtu'] = $HITS1[1];
+		}
+		if(preg_match("/Tunnel transmit bandwidth (\d+) \(kbps\)/", $interface, $HITS1))
+		{
+			$INTARRAY['tunnel_tx_bandwidth'] = $HITS1[1];
+		}
+		if(preg_match("/Tunnel receive bandwidth (\d+) \(kbps\)/", $interface, $HITS1))
+		{
+			$INTARRAY['tunnel_rx_bandwidth'] = $HITS1[1];
+		}
+		if(preg_match("/Tunnel protection via (\S+) \(profile \"(\S+)\"\)/", $interface, $HITS1))
+		{
+			$INTARRAY['tunnel_protection'] = $HITS1[1];
+			$INTARRAY['tunnel_profile'] = $HITS1[2];
+		}
+		if(preg_match("/Encapsulation (.+), Vlan ID  (\d+)\./", $interface, $HITS1))
+		{
+			$INTARRAY['trunk_encapsulation'] = $HITS1[1];
+			$INTARRAY['vlan_id'] = $HITS1[2];
+		}
+
+		return $INTARRAY;
+	}
 	
+	public static function parse_interfaces_to_ips($interfaces)
+	{
+		$reg1 = "/Internet address is (\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\/(\d{1,2})/";
+
+		foreach(explode("\n", $interfaces) as $line)
+		{
+			if (preg_match($reg1, $line, $HITS1))
+			{
+				$ips[$HITS1[1]]['network'] = self::cidr2network($HITS1[1],$HITS1[2]);
+				$ips[$HITS1[1]]['mask'] = self::cidr2netmask($HITS1[2]);
+				$ips[$HITS1[1]]['cidr'] = $HITS1[2];
+			}
+		}
+		return $ips;
+	}
+
 }
