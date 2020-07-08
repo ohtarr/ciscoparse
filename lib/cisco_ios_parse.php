@@ -612,7 +612,7 @@ class CiscoIosParse
 			}
 			if(preg_match("/ip address (dhcp|negotiated)/", $INTCFG, $HITS1))
 			{
-				$INTARRAY['ip'][$HITS1[1]] = 1;
+				$INTARRAY[$HITS1[1]] = 1;
 			}
 			if(preg_match_all("/ip helper-address (\S+)/", $INTCFG, $HITS1))
 			{
